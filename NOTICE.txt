@@ -1,0 +1,3 @@
+AWS ECS Container instance draining integration with ASG hooks.
+
+Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
