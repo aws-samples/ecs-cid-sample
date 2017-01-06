@@ -8,7 +8,7 @@ There are times when EC2 instances need to be removed from the cluster, for exam
 # Overview of steps
 1. Download index.zip from this repository
 
-2. Upload the downloaded index.zip containing Lambda code index.py to <Your_AWS_Account_S3_Bucket>
+2. Upload the downloaded index.zip containing Lambda code index.py to [Your_AWS_Account_S3_Bucket]
 
 3. Download the Cloudformation template
 
@@ -22,7 +22,7 @@ There are times when EC2 instances need to be removed from the cluster, for exam
 
 For the full solution overview visit [Blog link](URL link here).
 
-## Cloudformation templates
+## Cloudformation template
  - cform/ecs.yaml
 
 ## Solution code
