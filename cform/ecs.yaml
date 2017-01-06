@@ -1,0 +1,535 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AWS CloudFormation template to create a new VPC
+  or use an existing VPC for ECS deployment
+  in Create Cluster Wizard
+Parameters:
+  EcsClusterName:
+    Type: String
+    Description: >
+      Specifies the ECS Cluster Name with which the resources would be
+      associated
+    Default: 'demoCluster'
+  EcsAmiId:
+    Type: String
+    Description: Specifies the AMI ID for your container instances. Default AMI-ID is the ECS Optimized AMI for us-west-2 region. Please change it to reflect your regions' latest ECS AMI-ID
+    Default: 'ami-7abc111a'
+  EcsInstanceType:
+    Type: String
+    Description: >
+      Specifies the EC2 instance type for your container instances.
+      Defaults to t2.medium
+    Default: t2.medium
+    ConstraintDescription: must be a valid EC2 instance type.
+  KeyName:
+    Type: String
+    Description: >
+      Specifies the name of an existing Amazon EC2 key pair
+      to enable SSH access to the EC2 instances in your cluster.
+  S3BucketName:
+    Type: String
+    Description: >
+      Specifies the name of an S3 bucket in which the index.zip file is stored. index.zip contains the Python Lambda code index.py
+  VpcId:
+    Type: String
+    Description: >
+      Optional - Specifies the ID of an existing VPC in which to launch
+      your container instances. If you specify a VPC ID, you must specify a list of
+      existing subnets in that VPC. If you do not specify a VPC ID, a new VPC is created
+      with atleast 1 subnet.
+    Default: ''
+    AllowedPattern: "^(?:vpc-[0-9a-f]{8}|)$"
+    ConstraintDescription: >
+      VPC Id must begin with 'vpc-' or leave blank to have a
+      new VPC created
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: >
+      Optional - Specifies the Comma separated list of existing VPC Subnet
+      Ids where ECS instances will run
+    Default: ''
+  SecurityGroupId:
+    Type: String
+    Description: >
+      Optional - Specifies the Security Group Id of an existing Security
+      Group. Leave blank to have a new Security Group created
+    Default: ''
+  VpcCidr:
+    Type: String
+    Description: Optional - Specifies the CIDR Block of VPC
+    Default: '10.0.0.0/16'
+  SubnetCidr1:
+    Type: String
+    Description: Specifies the CIDR Block of Subnet 1
+    Default: '10.0.0.0/24'
+  SubnetCidr2:
+    Type: String
+    Description: Specifies the CIDR Block of Subnet 2
+    Default: '10.0.1.0/24'
+  SubnetCidr3:
+    Type: String
+    Description: Specifies the CIDR Block of Subnet 3
+    Default: ''
+  AsgMaxSize:
+    Type: Number
+    Description: >
+      Specifies the number of instances to launch and register to the cluster.
+      Defaults to 3.
+    Default: '3'
+  IamRoleInstanceProfile:
+    Type: String
+    Description: >
+      Specifies the Name or the Amazon Resource Name (ARN) of the instance
+      profile associated with the IAM role for the instance
+    Default: 'ecsInstanceRole'
+  SecurityIngressFromPort:
+    Type: Number
+    Description: >
+      Optional - Specifies the Start of Security Group port to open on
+      ECS instances - defaults to port 0
+    Default: '80'
+  SecurityIngressToPort:
+    Type: Number
+    Description: >
+      Optional - Specifies the End of Security Group port to open on ECS
+      instances - defaults to port 65535
+    Default: '80'
+  SecurityIngressCidrIp:
+    Type: String
+    Description: >
+      Optional - Specifies the CIDR/IP range for Security Ports - defaults
+      to 0.0.0.0/0
+    Default: 0.0.0.0/0
+  EcsEndpoint:
+    Type: String
+    Description: >
+      Optional - Specifies the ECS Endpoint for the ECS Agent to connect to
+    Default: ''
+  AppContainerPort:
+    Type: Number
+    Description: >
+      Optional - Specifies the application container port
+    Default: '80'
+  AppHostPort:
+    Type: Number
+    Description: >
+      Optional - Specifies the application container port
+    Default: '80'
+  AppName:
+    Type: String
+    Description: >
+      Optional - Specifies the application name
+    Default: 'ecs-sample-app'
+  VpcAvailabilityZones:
+    Type: CommaDelimitedList
+    Description: >
+      Specifies a comma-separated list of 3 VPC Availability Zones for
+      the creation of new subnets. These zones must have the available status.
+    Default: 'us-west-2b,us-west-2c,us-west-2a'
+  EbsVolumeSize:
+    Type: Number
+    Description: >
+      Optional - Specifies the Size in GBs, of the newly created Amazon
+      Elastic Block Store (Amazon EBS) volume
+    Default: '22'
+  EbsVolumeType:
+    Type: String
+    Description: Optional - Specifies the Type of (Amazon EBS) volume
+    Default: 'gp2'
+    AllowedValues:
+      - ''
+      - standard
+      - io1
+      - gp2
+      - sc1
+      - st1
+    ConstraintDescription: Must be a valid EC2 volume type.
+  DeviceName:
+    Type: String
+    Description: Optional - Specifies the device mapping for the Volume
+    Default: ''
+Conditions:
+  CreateEC2LCWithKeyPair:
+    !Not [!Equals [!Ref KeyName, '']]
+  SetEndpointToECSAgent:
+    !Not [!Equals [!Ref EcsEndpoint, '']]
+  CreateNewSecurityGroup:
+    !Equals [!Ref SecurityGroupId, '']
+  CreateNewVpc:
+    !Equals [!Ref VpcId, '']
+  CreateSubnet1: !And
+    - !Not [!Equals [!Ref SubnetCidr1, '']]
+    - !Condition CreateNewVpc
+  CreateSubnet2: !And
+    - !Not [!Equals [!Ref SubnetCidr2, '']]
+    - !Condition CreateSubnet1
+  CreateSubnet3: !And
+    - !Not [!Equals [!Ref SubnetCidr3, '']]
+    - !Condition CreateSubnet2
+  CreateEbsVolume: !And
+    - !Not [!Equals [!Ref EbsVolumeSize, '0']]
+    - !Not [!Equals [!Ref EbsVolumeType, '']]
+    - !Not [!Equals [!Ref DeviceName, '']]
+Resources:
+  MyCluster:
+    Type: "AWS::ECS::Cluster"
+    Properties:
+      ClusterName: !Ref EcsClusterName
+  Vpc:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+  PubSubnetAz1:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref SubnetCidr1
+      AvailabilityZone: !Select [ 0, !Ref VpcAvailabilityZones ]
+  PubSubnetAz2:
+    Condition: CreateSubnet2
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref SubnetCidr2
+      AvailabilityZone: !Select [ 1, !Ref VpcAvailabilityZones ]
+  PubSubnetAz3:
+    Condition: CreateSubnet3
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref SubnetCidr3
+      AvailabilityZone: !Select [ 2, !Ref VpcAvailabilityZones ]
+  InternetGateway:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::InternetGateway
+  AttachGateway:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+  RouteViaIgw:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+  PublicRouteViaIgw:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref RouteViaIgw
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PubSubnet1RouteTableAssociation:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnetAz1
+      RouteTableId: !Ref RouteViaIgw
+  PubSubnet2RouteTableAssociation:
+    Condition: CreateSubnet2
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnetAz2
+      RouteTableId: !Ref RouteViaIgw
+  PubSubnet3RouteTableAssociation:
+    Condition: CreateSubnet3
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnetAz3
+      RouteTableId: !Ref RouteViaIgw
+  EcsSecurityGroup:
+    Condition: CreateNewSecurityGroup
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Allowed Ports
+      VpcId: !If [ CreateSubnet1, !Ref Vpc, !Ref VpcId ]
+      SecurityGroupIngress:
+        IpProtocol: tcp
+        FromPort: !Ref SecurityIngressFromPort
+        ToPort: !Ref SecurityIngressToPort
+        CidrIp: !Ref SecurityIngressCidrIp
+  EcsInstanceLc:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !Ref EcsAmiId
+      InstanceType: !Ref EcsInstanceType
+      AssociatePublicIpAddress: true
+      IamInstanceProfile: !Ref IamRoleInstanceProfile
+      KeyName: !If [ CreateEC2LCWithKeyPair, !Ref KeyName, !Ref "AWS::NoValue" ]
+      SecurityGroups: [ !If [ CreateNewSecurityGroup, !Ref EcsSecurityGroup, !Ref SecurityGroupId ] ]
+      BlockDeviceMappings: !If
+        - CreateEbsVolume
+        -
+          - DeviceName: !Ref DeviceName
+            Ebs:
+             VolumeSize: !Ref EbsVolumeSize
+             VolumeType: !Ref EbsVolumeType
+        - !Ref "AWS::NoValue"
+      UserData: !If
+        - SetEndpointToECSAgent
+        - Fn::Base64: !Sub |
+           #!/bin/bash
+           echo ECS_CLUSTER=${EcsClusterName} >> /etc/ecs/ecs.config
+           echo ECS_BACKEND_HOST=${EcsEndpoint} >> /etc/ecs/ecs.config
+        - Fn::Base64: !Sub |
+           #!/bin/bash
+           echo ECS_CLUSTER=${EcsClusterName} >> /etc/ecs/ecs.config
+  EcsInstanceAsg:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: !If
+        - CreateSubnet1
+        - !If
+          - CreateSubnet2
+          - !If
+            - CreateSubnet3
+            - [ !Sub "${PubSubnetAz1}, ${PubSubnetAz2}, ${PubSubnetAz3}" ]
+            - [ !Sub "${PubSubnetAz1}, ${PubSubnetAz2}" ]
+          - [ !Sub "${PubSubnetAz1}" ]
+        - !Ref SubnetIds
+      LaunchConfigurationName: !Ref EcsInstanceLc
+      MinSize: '0'
+      MaxSize: !Ref AsgMaxSize
+      DesiredCapacity: !Ref AsgMaxSize
+      NotificationConfigurations:
+      - TopicARN: !Ref ASGSNSTopic
+        NotificationTypes:
+        - autoscaling:EC2_INSTANCE_LAUNCH
+        - autoscaling:EC2_INSTANCE_LAUNCH_ERROR
+        - autoscaling:EC2_INSTANCE_TERMINATE
+        - autoscaling:EC2_INSTANCE_TERMINATE_ERROR
+      Tags:
+        -
+          Key: Name
+          Value: !Sub "ECS Instance - ${AWS::StackName}"
+          PropagateAtLaunch: 'true'
+        -
+          Key: Description
+          Value: >
+            This instance is the part of the Auto Scaling group which was created
+            through ECS Console
+          PropagateAtLaunch: 'true'
+  taskdefinition:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+        -
+          Name:
+            Ref: "AppName"
+          MountPoints:
+            -
+              SourceVolume: "my-vol"
+              ContainerPath: "/var/www/my-vol"
+          Image: "amazon/amazon-ecs-sample"
+          Cpu: "10"
+          PortMappings:
+            -
+              ContainerPort:
+                Ref: "AppContainerPort"
+              HostPort:
+                Ref: "AppHostPort"
+          EntryPoint:
+            - "/usr/sbin/apache2"
+            - "-D"
+            - "FOREGROUND"
+          Memory: "500"
+          Essential: "true"
+        -
+          Name: "busybox"
+          Image: "busybox"
+          Cpu: "10"
+          EntryPoint:
+            - "sh"
+            - "-c"
+          Memory: "500"
+          Command:
+            - "/bin/sh -c \"while true; do /bin/date > /var/www/my-vol/date; sleep 1; done\""
+          Essential: "false"
+          VolumesFrom:
+            -
+              SourceContainer:
+                Ref: "AppName"
+      Volumes:
+        -
+          Host:
+            SourcePath: "/var/lib/docker/vfs/dir/"
+          Name: "my-vol"
+  demoService:
+    Type: "AWS::ECS::Service"
+    Properties:
+      Cluster: !Ref MyCluster
+      DeploymentConfiguration:
+        MaximumPercent: 100
+        MinimumHealthyPercent: 50
+      DesiredCount: 2
+      TaskDefinition: !Ref taskdefinition
+    DependsOn:
+      - ECSServiceRole
+      - taskdefinition
+  EcsElasticLoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      Listeners:
+      - LoadBalancerPort: '80'
+        InstancePort: '80'
+        Protocol: HTTP
+      HealthCheck:
+        Target: HTTP:80/
+        HealthyThreshold: '2'
+        UnhealthyThreshold: '10'
+        Interval: '30'
+        Timeout: '5'
+      SecurityGroups:
+      - !Ref EcsSecurityGroup
+      Subnets:
+        - !Ref PubSubnetAz1
+        - !Ref PubSubnetAz2
+  ECSServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ecs.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - elasticloadbalancing:Describe*
+            - elasticloadbalancing:DeregisterInstancesFromLoadBalancer
+            - elasticloadbalancing:RegisterInstancesWithLoadBalancer
+            - ec2:Describe*
+            - ec2:AuthorizeSecurityGroupIngress
+            Resource: "*"
+  SNSLambdaRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "autoscaling.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AutoScalingNotificationAccessRole
+      Path: "/"
+  LambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Policies:
+        -
+          PolicyName: "lambda-inline"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                - autoscaling:CompleteLifecycleAction
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                - ec2:DescribeInstances
+                - ec2:DescribeInstanceAttribute
+                - ec2:DescribeInstanceStatus
+                - ec2:DescribeHosts
+                - ecs:ListContainerInstances
+                - ecs:Submit*
+                - ecs:DescribeContainerInstances
+                - ecs:Poll
+                - ecs:ListTasks
+                - ecs:DescribeTasks
+                - sns:*
+                - autoscaling:Describe*
+                Resource: "*"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AutoScalingNotificationAccessRole
+      Path: "/"
+  ASGSNSTopic:
+    Type: "AWS::SNS::Topic"
+    Properties:
+      Subscription:
+        -
+          Endpoint:
+             Fn::GetAtt:
+                - "LambdaFunctionForASG"
+                - "Arn"
+          Protocol: "lambda"
+    DependsOn: "LambdaFunctionForASG"
+  LambdaFunctionForASG:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: "index.zip"
+      Description: Lambda code for the autoscaling hook triggers invoked when autoscaling events of launching and terminating instance occur
+      Handler: "index.lambda_handler"
+      Role:
+         Fn::GetAtt:
+           - "LambdaExecutionRole"
+           - "Arn"
+      Runtime: "python2.7"
+      Timeout: "300"
+  LambdaInvokePermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+       FunctionName: !Ref LambdaFunctionForASG
+       Action: lambda:InvokeFunction
+       Principal: "sns.amazonaws.com"
+       SourceArn: !Ref ASGSNSTopic
+  LambdaSubscriptionToSNSTopic:
+    Type: AWS::SNS::Subscription
+    Properties:
+       Endpoint:
+          Fn::GetAtt:
+             - "LambdaFunctionForASG"
+             - "Arn"
+       Protocol: 'lambda'
+       TopicArn: !Ref ASGSNSTopic
+  ASGTerminateHook:
+    Type: "AWS::AutoScaling::LifecycleHook"
+    Properties:
+      AutoScalingGroupName: !Ref EcsInstanceAsg
+      DefaultResult: "ABANDON"
+      HeartbeatTimeout: "900"
+      LifecycleTransition: "autoscaling:EC2_INSTANCE_TERMINATING"
+      NotificationTargetARN: !Ref ASGSNSTopic
+      RoleARN:
+         Fn::GetAtt:
+         - "SNSLambdaRole"
+         - "Arn"
+    DependsOn: "ASGSNSTopic"
+Outputs:
+  EcsInstanceAsgName:
+    Description: Auto Scaling Group Name for ECS Instances
+    Value: !Ref EcsInstanceAsg
+  SNSTopicForASG:
+    Description: Topic used by ASG to send notifications when instance state is changing
+    Value: !Ref SNSLambdaRole
