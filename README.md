@@ -10,10 +10,10 @@ There are times when EC2 instances need to be removed from the cluster, for exam
 
 2. Upload the downloaded index.zip containing Lambda code index.py to [Your_AWS_Account_S3_Bucket]
 
-3. Download the Cloudformation template
+3. Download the CloudFormation template
 
-4. Launch Cloudformation template that creates below AWS resources
-    •	Cloudformation will require S3 bucket name as one of the parameters you created in Step 2 above.
+4. Launch CloudFormation template that creates below AWS resources
+    •	CloudFormation will require S3 bucket name as one of the parameters you created in Step 2 above.
     •	The VPC and associated network elements (subnets, security groups, route table, etc)
     •	ECS Cluster, ECS service, a sample ECS task definition
     •	Auto scaling group with two EC2 instances and a termination lifecycle hook
@@ -22,7 +22,7 @@ There are times when EC2 instances need to be removed from the cluster, for exam
 
 For the full solution overview visit [Blog link](URL link here).
 
-## Cloudformation template
+## CloudFormation template
  - cform/ecs.yaml
 
 ## Solution code
@@ -30,10 +30,10 @@ For the full solution overview visit [Blog link](URL link here).
 
 ***
 
-Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+Copyright 2016-2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-Licensed under the Amazon Software License (the "License"). You may not use this file except in compliance with the License. A copy of the License is located at
+Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the License. A copy of the License is located at
 
-    http://aws.amazon.com/asl/
+http://aws.amazon.com/apache2.0/
 
-or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and limitations under the License.
+or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
