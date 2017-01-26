@@ -18,7 +18,7 @@ session = boto3.session.Session()
 logger.debug("Session is in region %s ", session.region_name)
 
 ec2Client = session.client(service_name='ec2')
-ecsClient = session.client(service_name='ecs', endpoint_url='https://madison.us-west-2.amazonaws.com')
+ecsClient = session.client(service_name='ecs')
 asgClient = session.client('autoscaling')
 snsClient = session.client('sns')
 lambdaClient = session.client('lambda')
@@ -80,8 +80,9 @@ def checkContainerInstanceTaskStatus(Ec2InstanceId):
                 tmpMsgAppend = {"containerInstanceId": containerInstanceId}
             else:
                 # Make ECS API call to set the container status to DRAINING
-                logger.info("Make ECS API call to set the container status to DRAINING...sleeping 2 minutes")
-                time.sleep(120)
+                logger.info("Make ECS API call to set the container status to DRAINING...")
+                ecsResponse = ecsClient.update_container_instances_state(cluster=clusterName,containerInstances=[containerInstanceId],status='DRAINING')
+                print ("Output from setting instance ")
                 # When you set instance state to draining, append the containerInstanceID to the message as well
                 tmpMsgAppend = {"containerInstanceId": containerInstanceId}
 
