@@ -82,7 +82,6 @@ def checkContainerInstanceTaskStatus(Ec2InstanceId):
                 # Make ECS API call to set the container status to DRAINING
                 logger.info("Make ECS API call to set the container status to DRAINING...")
                 ecsResponse = ecsClient.update_container_instances_state(cluster=clusterName,containerInstances=[containerInstanceId],status='DRAINING')
-                print ("Output from setting instance ")
                 # When you set instance state to draining, append the containerInstanceID to the message as well
                 tmpMsgAppend = {"containerInstanceId": containerInstanceId}
 
