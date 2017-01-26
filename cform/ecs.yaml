@@ -10,10 +10,19 @@ Parameters:
       Specifies the ECS Cluster Name with which the resources would be
       associated
     Default: 'demoCluster'
+  KeyName:
+    Type: String
+    Description: >
+      REQUIRED -  Specifies the name of an existing Amazon EC2 key pair
+      to enable SSH access to the EC2 instances in your cluster.
+  S3BucketName:
+    Type: String
+    Description: >
+      REQUIRED - Specifies the name of your AWS account S3 bucket in which the index.zip file is stored. index.zip contains the Python Lambda code index.py; Please download this from https://github.com/awslabs/ecs-cid-sample/tree/master/code and upload to your S3 bucket.
   EcsAmiId:
     Type: String
-    Description: Specifies the AMI ID for your container instances. Default AMI-ID is the ECS Optimized AMI for us-west-2 region. Please change it to reflect your regions' latest ECS AMI-ID
-    Default: 'ami-7abc111a'
+    Description: REQUIRED - Default ECS Optimized AMI for us-west-2 region. Please change it to reflect your regions' latest ECS AMI-ID
+    Default: 'ami-8e7bc4ee'
   EcsInstanceType:
     Type: String
     Description: >
@@ -21,15 +30,6 @@ Parameters:
       Defaults to t2.medium
     Default: t2.medium
     ConstraintDescription: must be a valid EC2 instance type.
-  KeyName:
-    Type: String
-    Description: >
-      Specifies the name of an existing Amazon EC2 key pair
-      to enable SSH access to the EC2 instances in your cluster.
-  S3BucketName:
-    Type: String
-    Description: >
-      Specifies the name of an S3 bucket in which the index.zip file is stored. index.zip contains the Python Lambda code index.py
   VpcId:
     Type: String
     Description: >
@@ -70,12 +70,6 @@ Parameters:
     Type: String
     Description: Specifies the CIDR Block of Subnet 3
     Default: ''
-  AsgMaxSize:
-    Type: Number
-    Description: >
-      Specifies the number of instances to launch and register to the cluster.
-      Defaults to 3.
-    Default: '3'
   IamRoleInstanceProfile:
     Type: String
     Description: >
@@ -100,26 +94,6 @@ Parameters:
       Optional - Specifies the CIDR/IP range for Security Ports - defaults
       to 0.0.0.0/0
     Default: 0.0.0.0/0
-  EcsEndpoint:
-    Type: String
-    Description: >
-      Optional - Specifies the ECS Endpoint for the ECS Agent to connect to
-    Default: ''
-  AppContainerPort:
-    Type: Number
-    Description: >
-      Optional - Specifies the application container port
-    Default: '80'
-  AppHostPort:
-    Type: Number
-    Description: >
-      Optional - Specifies the application container port
-    Default: '80'
-  AppName:
-    Type: String
-    Description: >
-      Optional - Specifies the application name
-    Default: 'ecs-sample-app'
   VpcAvailabilityZones:
     Type: CommaDelimitedList
     Description: >
@@ -144,15 +118,9 @@ Parameters:
       - sc1
       - st1
     ConstraintDescription: Must be a valid EC2 volume type.
-  DeviceName:
-    Type: String
-    Description: Optional - Specifies the device mapping for the Volume
-    Default: ''
 Conditions:
   CreateEC2LCWithKeyPair:
     !Not [!Equals [!Ref KeyName, '']]
-  SetEndpointToECSAgent:
-    !Not [!Equals [!Ref EcsEndpoint, '']]
   CreateNewSecurityGroup:
     !Equals [!Ref SecurityGroupId, '']
   CreateNewVpc:
@@ -169,7 +137,6 @@ Conditions:
   CreateEbsVolume: !And
     - !Not [!Equals [!Ref EbsVolumeSize, '0']]
     - !Not [!Equals [!Ref EbsVolumeType, '']]
-    - !Not [!Equals [!Ref DeviceName, '']]
 Resources:
   MyCluster:
     Type: "AWS::ECS::Cluster"
@@ -263,21 +230,15 @@ Resources:
       IamInstanceProfile: !Ref IamRoleInstanceProfile
       KeyName: !If [ CreateEC2LCWithKeyPair, !Ref KeyName, !Ref "AWS::NoValue" ]
       SecurityGroups: [ !If [ CreateNewSecurityGroup, !Ref EcsSecurityGroup, !Ref SecurityGroupId ] ]
-      BlockDeviceMappings: !If
-        - CreateEbsVolume
-        -
-          - DeviceName: !Ref DeviceName
+      BlockDeviceMappings:
+          - DeviceName: "/dev/sdm"
             Ebs:
-             VolumeSize: !Ref EbsVolumeSize
-             VolumeType: !Ref EbsVolumeType
-        - !Ref "AWS::NoValue"
-      UserData: !If
-        - SetEndpointToECSAgent
-        - Fn::Base64: !Sub |
-           #!/bin/bash
-           echo ECS_CLUSTER=${EcsClusterName} >> /etc/ecs/ecs.config
-           echo ECS_BACKEND_HOST=${EcsEndpoint} >> /etc/ecs/ecs.config
-        - Fn::Base64: !Sub |
+              VolumeType: "gp2"
+              Iops: "200"
+              DeleteOnTermination: "true"
+              VolumeSize: "20"
+      UserData:
+        Fn::Base64: !Sub |
            #!/bin/bash
            echo ECS_CLUSTER=${EcsClusterName} >> /etc/ecs/ecs.config
   EcsInstanceAsg:
@@ -295,8 +256,8 @@ Resources:
         - !Ref SubnetIds
       LaunchConfigurationName: !Ref EcsInstanceLc
       MinSize: '0'
-      MaxSize: !Ref AsgMaxSize
-      DesiredCapacity: !Ref AsgMaxSize
+      MaxSize:  '3'
+      DesiredCapacity: '3'
       NotificationConfigurations:
       - TopicARN: !Ref ASGSNSTopic
         NotificationTypes:
@@ -320,8 +281,7 @@ Resources:
     Properties:
       ContainerDefinitions:
         -
-          Name:
-            Ref: "AppName"
+          Name: "ecs-sample-app"
           MountPoints:
             -
               SourceVolume: "my-vol"
@@ -330,10 +290,8 @@ Resources:
           Cpu: "10"
           PortMappings:
             -
-              ContainerPort:
-                Ref: "AppContainerPort"
-              HostPort:
-                Ref: "AppHostPort"
+              ContainerPort: "80"
+              HostPort: "80"
           EntryPoint:
             - "/usr/sbin/apache2"
             - "-D"
@@ -353,8 +311,7 @@ Resources:
           Essential: "false"
           VolumesFrom:
             -
-              SourceContainer:
-                Ref: "AppName"
+              SourceContainer: "ecs-sample-app"
       Volumes:
         -
           Host:
@@ -372,24 +329,6 @@ Resources:
     DependsOn:
       - ECSServiceRole
       - taskdefinition
-  EcsElasticLoadBalancer:
-    Type: AWS::ElasticLoadBalancing::LoadBalancer
-    Properties:
-      Listeners:
-      - LoadBalancerPort: '80'
-        InstancePort: '80'
-        Protocol: HTTP
-      HealthCheck:
-        Target: HTTP:80/
-        HealthyThreshold: '2'
-        UnhealthyThreshold: '10'
-        Interval: '30'
-        Timeout: '5'
-      SecurityGroups:
-      - !Ref EcsSecurityGroup
-      Subnets:
-        - !Ref PubSubnetAz1
-        - !Ref PubSubnetAz2
   ECSServiceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -451,13 +390,14 @@ Resources:
                 - ec2:DescribeInstanceStatus
                 - ec2:DescribeHosts
                 - ecs:ListContainerInstances
-                - ecs:Submit*
+                - ecs:SubmitContainerStateChange
+                - ecs:SubmitTaskStateChange
                 - ecs:DescribeContainerInstances
-                - ecs:Poll
+                - ecs:UpdateContainerInstancesState
                 - ecs:ListTasks
                 - ecs:DescribeTasks
-                - sns:*
-                - autoscaling:Describe*
+                - sns:Publish
+                - sns:ListSubscriptions
                 Resource: "*"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
