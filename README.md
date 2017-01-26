@@ -12,15 +12,16 @@ There are times when EC2 instances need to be removed from the cluster, for exam
 
 3. Download the CloudFormation template
 
-4. Launch CloudFormation template that creates below AWS resources
-    •	CloudFormation will require S3 bucket name as one of the parameters you created in Step 2 above.
-    •	The VPC and associated network elements (subnets, security groups, route table, etc)
-    •	ECS Cluster, ECS service, a sample ECS task definition
-    •	Auto scaling group with two EC2 instances and a termination lifecycle hook
-    •	Lambda function, permissions to invoke lambda, and lambda execution roles
-    •	SNS topic, policy
+4. Launch the CloudFormation template that creates the following AWS resources:
 
-For the full solution overview visit [Blog link](URL link here).
+* CloudFormation will require S3 bucket name as one of the parameters you created in Step 2 above.
+* The VPC and associated network elements (subnets, security groups, route table, etc)
+* ECS Cluster, ECS service, a sample ECS task definition
+* Auto scaling group with two EC2 instances and a termination lifecycle hook
+* Lambda function, permissions to invoke lambda, and lambda execution roles
+* SNS topic, policy
+
+For the full solution overview visit [Blog link](https://aws.amazon.com/blogs/compute/how-to-automate-container-instance-draining-in-amazon-ecs).
 
 ## CloudFormation template
  - cform/ecs.yaml
