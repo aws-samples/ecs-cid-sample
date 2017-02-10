@@ -38,3 +38,7 @@ Licensed under the Apache License, Version 2.0 (the "License"). You may not use 
 http://aws.amazon.com/apache2.0/
 
 or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+## PLEASE NOTE
+
+Lambda version of boto3 DOES NOT have the latest version of boto3 that (as of February 10th). This leads to user experiencing issue similar to one reported in https://github.com/awslabs/ecs-cid-sample/issues/2 . Please use the index.zip package provided, or if you are customizing code, package up the latest boto3 in the Lambda zip file.
