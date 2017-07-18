@@ -60,30 +60,35 @@ def checkContainerInstanceTaskStatus(Ec2InstanceId):
             logger.info("Cluster name %s",clusterName)
 
     # Get list of container instance IDs from the clusterName
-    clusterListResp = ecsClient.list_container_instances(cluster=clusterName)
-    containerDetResp = ecsClient.describe_container_instances(cluster=clusterName, containerInstances=clusterListResp[
-        'containerInstanceArns'])
-    logger.debug("describe container instances response %s",containerDetResp)
+    paginator = ecsClient.get_paginator('list_container_instances')
+    clusterListPages = paginator.paginate(cluster=clusterName)
+    for containerListResp in clusterListPages:
+        containerDetResp = ecsClient.describe_container_instances(cluster=clusterName, containerInstances=clusterListResp[
+            'containerInstanceArns'])
+        logger.debug("describe container instances response %s",containerDetResp)
 
-    for containerInstances in containerDetResp['containerInstances']:
-        logger.debug("Container Instance ARN: %s and ec2 Instance ID %s",containerInstances['containerInstanceArn'],
-                                                                         containerInstances['ec2InstanceId'])
-        if containerInstances['ec2InstanceId'] == Ec2InstanceId:
-            logger.info("Container instance ID of interest : %s",containerInstances['containerInstanceArn'])
-            containerInstanceId = containerInstances['containerInstanceArn']
+        for containerInstances in containerDetResp['containerInstances']:
+            logger.debug("Container Instance ARN: %s and ec2 Instance ID %s",containerInstances['containerInstanceArn'],
+                                                                             containerInstances['ec2InstanceId'])
+            if containerInstances['ec2InstanceId'] == Ec2InstanceId:
+                logger.info("Container instance ID of interest : %s",containerInstances['containerInstanceArn'])
+                containerInstanceId = containerInstances['containerInstanceArn']
 
-            # Check if the instance state is set to DRAINING. If not, set it, so the ECS Cluster will handle de-registering instance, draining tasks and draining them
-            containerStatus = containerInstances['status']
-            if containerStatus == 'DRAINING':
-                logger.info("Container ID %s with EC2 instance-id %s is draining tasks",containerInstanceId,
-                                                                                         Ec2InstanceId)
-                tmpMsgAppend = {"containerInstanceId": containerInstanceId}
-            else:
-                # Make ECS API call to set the container status to DRAINING
-                logger.info("Make ECS API call to set the container status to DRAINING...")
-                ecsResponse = ecsClient.update_container_instances_state(cluster=clusterName,containerInstances=[containerInstanceId],status='DRAINING')
-                # When you set instance state to draining, append the containerInstanceID to the message as well
-                tmpMsgAppend = {"containerInstanceId": containerInstanceId}
+                # Check if the instance state is set to DRAINING. If not, set it, so the ECS Cluster will handle de-registering instance, draining tasks and draining them
+                containerStatus = containerInstances['status']
+                if containerStatus == 'DRAINING':
+                    logger.info("Container ID %s with EC2 instance-id %s is draining tasks",containerInstanceId,
+                                                                                             Ec2InstanceId)
+                    tmpMsgAppend = {"containerInstanceId": containerInstanceId}
+                else:
+                    # Make ECS API call to set the container status to DRAINING
+                    logger.info("Make ECS API call to set the container status to DRAINING...")
+                    ecsResponse = ecsClient.update_container_instances_state(cluster=clusterName,containerInstances=[containerInstanceId],status='DRAINING')
+                    # When you set instance state to draining, append the containerInstanceID to the message as well
+                    tmpMsgAppend = {"containerInstanceId": containerInstanceId}
+                break
+            if containerInstanceId is not None:
+                break
 
     # Using container Instance ID, get the task list, and task running on that instance.
     if containerInstanceId != None:
