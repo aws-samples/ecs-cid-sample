@@ -472,4 +472,4 @@ Outputs:
     Value: !Ref EcsInstanceAsg
   SNSTopicForASG:
     Description: Topic used by ASG to send notifications when instance state is changing
-    Value: !Ref SNSLambdaRole
+    Value: !Ref ASGSNSTopic
