@@ -15,10 +15,6 @@ Parameters:
     Description: >
       REQUIRED -  Specifies the name of an existing Amazon EC2 key pair
       to enable SSH access to the EC2 instances in your cluster.
-  S3BucketName:
-    Type: String
-    Description: >
-      REQUIRED - Specifies the name of your AWS account S3 bucket in which the index.zip file is stored. index.zip contains the Python Lambda code index.py; Please download this from https://github.com/awslabs/ecs-cid-sample/tree/master/code and upload to your S3 bucket.
   EcsAmiId:
     Type: String
     Description: REQUIRED - Default ECS Optimized AMI for us-west-2 region. Please change it to reflect your regions' latest ECS AMI-ID
@@ -261,10 +257,7 @@ Resources:
       NotificationConfigurations:
       - TopicARN: !Ref ASGSNSTopic
         NotificationTypes:
-        - autoscaling:EC2_INSTANCE_LAUNCH
-        - autoscaling:EC2_INSTANCE_LAUNCH_ERROR
         - autoscaling:EC2_INSTANCE_TERMINATE
-        - autoscaling:EC2_INSTANCE_TERMINATE_ERROR
       Tags:
         -
           Key: Name
@@ -378,26 +371,16 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              -
-                Effect: "Allow"
+              - Effect: "Allow"
                 Action:
                 - autoscaling:CompleteLifecycleAction
                 - logs:CreateLogGroup
                 - logs:CreateLogStream
                 - logs:PutLogEvents
-                - ec2:DescribeInstances
-                - ec2:DescribeInstanceAttribute
-                - ec2:DescribeInstanceStatus
-                - ec2:DescribeHosts
                 - ecs:ListContainerInstances
-                - ecs:SubmitContainerStateChange
-                - ecs:SubmitTaskStateChange
                 - ecs:DescribeContainerInstances
                 - ecs:UpdateContainerInstancesState
-                - ecs:ListTasks
-                - ecs:DescribeTasks
                 - sns:Publish
-                - sns:ListSubscriptions
                 Resource: "*"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -426,17 +409,85 @@ Resources:
   LambdaFunctionForASG:
     Type: "AWS::Lambda::Function"
     Properties:
+      Description: Gracefully drain ECS tasks from EC2 instances before the instances are
+                   terminated by autoscaling.
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.6
+      MemorySize: 128
+      Timeout: 60
       Code:
-        S3Bucket: !Ref S3BucketName
-        S3Key: "index.zip"
-      Description: Lambda code for the autoscaling hook triggers invoked when autoscaling events of launching and terminating instance occur
-      Handler: "index.lambda_handler"
-      Role:
-         Fn::GetAtt:
-           - "LambdaExecutionRole"
-           - "Arn"
-      Runtime: "python2.7"
-      Timeout: "300"
+        ZipFile: !Sub |
+          import json
+          import time
+          import boto3
+
+          CLUSTER = '${AWS::StackName}'
+          REGION = '${AWS::Region}'
+
+          ECS = boto3.client('ecs', region_name=REGION)
+          ASG = boto3.client('autoscaling', region_name=REGION)
+          SNS = boto3.client('sns', region_name=REGION)
+
+          def find_ecs_instance_info(instance_id):
+              paginator = ECS.get_paginator('list_container_instances')
+              for list_resp in paginator.paginate(cluster=CLUSTER):
+                  arns = list_resp['containerInstanceArns']
+                  desc_resp = ECS.describe_container_instances(cluster=CLUSTER,
+                                                               containerInstances=arns)
+                  for container_instance in desc_resp['containerInstances']:
+                      if container_instance['ec2InstanceId'] != instance_id:
+                          continue
+
+                      print('Found instance: id=%s, arn=%s, status=%s, runningTasksCount=%s' %
+                            (instance_id, container_instance['containerInstanceArn'],
+                             container_instance['status'], container_instance['runningTasksCount']))
+
+                      return (container_instance['containerInstanceArn'],
+                              container_instance['status'], container_instance['runningTasksCount'])
+
+              return None, None, 0
+
+          def instance_has_running_tasks(instance_id):
+              (instance_arn, container_status, running_tasks) = find_ecs_instance_info(instance_id)
+              if instance_arn is None:
+                  print('Could not find instance ID %s. Letting autoscaling kill the instance.' %
+                        (instance_id))
+                  return False
+
+              if container_status != 'DRAINING':
+                  print('Setting container instance %s (%s) to DRAINING' %
+                        (instance_id, instance_arn))
+                  ECS.update_container_instances_state(cluster=CLUSTER,
+                                                       containerInstances=[instance_arn],
+                                                       status='DRAINING')
+
+              return running_tasks > 0
+
+          def lambda_handler(event, context):
+              msg = json.loads(event['Records'][0]['Sns']['Message'])
+
+              if 'LifecycleTransition' not in msg.keys() or \
+                 msg['LifecycleTransition'].find('autoscaling:EC2_INSTANCE_TERMINATING') == -1:
+                  print('Exiting since the lifecycle transition is not EC2_INSTANCE_TERMINATING.')
+                  return
+
+              if instance_has_running_tasks(msg['EC2InstanceId']):
+                  print('Tasks are still running on instance %s; posting msg to SNS topic %s' %
+                        (msg['EC2InstanceId'], event['Records'][0]['Sns']['TopicArn']))
+                  time.sleep(5)
+                  sns_resp = SNS.publish(TopicArn=event['Records'][0]['Sns']['TopicArn'],
+                                         Message=json.dumps(msg),
+                                         Subject='Publishing SNS msg to invoke Lambda again.')
+                  print('Posted msg %s to SNS topic.' % (sns_resp['MessageId']))
+              else:
+                  print('No tasks are running on instance %s; setting lifecycle to complete' %
+                        (msg['EC2InstanceId']))
+
+                  ASG.complete_lifecycle_action(LifecycleHookName=msg['LifecycleHookName'],
+                                                AutoScalingGroupName=msg['AutoScalingGroupName'],
+                                                LifecycleActionResult='CONTINUE',
+                                                InstanceId=msg['EC2InstanceId'])
   LambdaInvokePermission:
     Type: "AWS::Lambda::Permission"
     Properties:
