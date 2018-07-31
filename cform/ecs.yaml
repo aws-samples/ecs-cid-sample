@@ -422,7 +422,7 @@ Resources:
           import time
           import boto3
 
-          CLUSTER = '${AWS::StackName}'
+          CLUSTER = '${EcsClusterName}'
           REGION = '${AWS::Region}'
 
           ECS = boto3.client('ecs', region_name=REGION)
